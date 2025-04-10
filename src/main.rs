@@ -4,11 +4,14 @@ use rayon::join;
 use std::path::Path;
 use tracing::{debug, Level};
 use tracing_subscriber::fmt;
-use yek::{config::YekConfig, serialize_repo};
+use yek::{config::{validate_config, YekConfig}, serialize_repo};
 
 fn main() -> Result<()> {
     // 1) Parse CLI + config files:
     let mut full_config = YekConfig::init_config();
+
+    // Validate config
+    validate_config(&full_config)?;
 
     let env_filter = if full_config.debug {
         "yek=debug,ignore=off"
@@ -61,7 +64,13 @@ fn main() -> Result<()> {
         let checksum = checksum_res;
 
         // Now set the final output file with the computed checksum
-        let extension = if full_config.json { "json" } else { "txt" };
+        let extension = if full_config.json {
+            "json"
+        } else if full_config.xml {
+            "xml"
+        } else {
+            "txt"
+        };
         let output_dir = full_config.output_dir.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Output directory is required when not in streaming mode. This may indicate a configuration validation error.")
         })?;

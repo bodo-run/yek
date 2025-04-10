@@ -9,7 +9,7 @@ mod lib_tests {
 
     use yek::{
         concat_files, config::YekConfig, count_tokens, is_text_file, parallel::ProcessedFile,
-        parse_token_limit, priority::PriorityRule, serialize_repo,
+        parse_token_limit, priority::PriorityRule, serialize_repo, format_file_as_xml,
     };
 
     // Initialize tracing subscriber for tests
@@ -672,5 +672,116 @@ mod lib_tests {
         assert_eq!(parse_token_limit("1K").unwrap(), 1000);
         assert!(parse_token_limit("-1").is_err());
         assert!(parse_token_limit("invalid").is_err());
+    }
+
+    #[test]
+    fn test_xml_output() {
+        let config = YekConfig {
+            xml: true,
+            ..Default::default()
+        };
+        let files = vec![
+            ProcessedFile {
+                rel_path: "test.rs".to_string(),
+                content: "fn main() {}".to_string(),
+                priority: 0,
+                file_index: 0,
+            },
+            ProcessedFile {
+                rel_path: "src/lib.rs".to_string(),
+                content: "pub fn test() {}".to_string(),
+                priority: 1,
+                file_index: 1,
+            },
+        ];
+        let result = concat_files(&files, &config).unwrap();
+        assert!(result.starts_with("<files>\n"));
+        assert!(result.contains("<test_rs path=\"test.rs\">\n"));
+        assert!(result.contains("<lib_rs path=\"src/lib.rs\">\n"));
+        assert!(result.ends_with("</files>"));
+    }
+
+    #[test]
+    fn test_xml_output_complex_filenames() {
+        let config = YekConfig {
+            xml: true,
+            ..Default::default()
+        };
+        let files = vec![
+            ProcessedFile {
+                rel_path: "test.spec.ts".to_string(),
+                content: "test('it works');".to_string(),
+                priority: 0,
+                file_index: 0,
+            },
+            ProcessedFile {
+                rel_path: "component.test.jsx".to_string(),
+                content: "describe('component');".to_string(),
+                priority: 1,
+                file_index: 1,
+            },
+        ];
+        let result = concat_files(&files, &config).unwrap();
+        assert!(result.contains("<test_spec_ts path=\"test.spec.ts\">\n"));
+        assert!(result.contains("<component_test_jsx path=\"component.test.jsx\">\n"));
+    }
+
+    #[test]
+    fn test_format_file_as_xml() {
+        let result = format_file_as_xml(
+            "src/test.spec.ts",
+            "describe('test suite');"
+        );
+        assert_eq!(
+            result,
+            "<test_spec_ts path=\"src/test.spec.ts\">\ndescribe('test suite');\n</test_spec_ts>\n"
+        );
+    }
+
+    #[test]
+    fn test_xml_output_empty_files() {
+        let config = YekConfig {
+            xml: true,
+            ..Default::default()
+        };
+        let files = vec![];
+        let output = concat_files(&files, &config).unwrap();
+        assert_eq!(output, "<files>\n</files>");
+    }
+
+    #[test]
+    fn test_xml_output_special_chars() {
+        let config = YekConfig {
+            xml: true,
+            ..Default::default()
+        };
+        let files = vec![ProcessedFile {
+            rel_path: "test with spaces.txt".to_string(),
+            content: "Content with <xml> chars".to_string(),
+            priority: 0,
+            file_index: 0,
+        }];
+        let output = concat_files(&files, &config).unwrap();
+        assert!(output.contains(r#"<test_with_spaces_txt path="test with spaces.txt">"#));
+        assert!(output.contains("Content with <xml> chars"));
+    }
+
+    #[test]
+    fn test_xml_json_conflict() {
+        let config = YekConfig {
+            xml: true,
+            json: true,
+            ..Default::default()
+        };
+        let files = vec![ProcessedFile {
+            rel_path: "test.txt".to_string(),
+            content: "content".to_string(),
+            priority: 0,
+            file_index: 0,
+        }];
+        // The code should prioritize JSON if both are set
+        let output = concat_files(&files, &config).unwrap();
+        assert!(!output.contains("<files>"));
+        assert!(output.contains(r#""filename": "test.txt""#));
     }
 }
